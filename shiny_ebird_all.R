@@ -4,14 +4,33 @@ library(ggplot2)
 library(gridExtra)
 library(RColorBrewer)
 ###################################
-presence<-read.csv('C:/Users/birde/Dropbox/ebird/eBird_TX_all.csv')
-sub.t<-read.csv('C:/Users/birde/Dropbox/ebird/eBird_TX_filters_small.csv')
-dfsample<-read.csv('C:/Users/birde/Dropbox/ebird/eBird_TX_sample.csv')
+# THIS IS THE ONLY THING YOU NEED TO CHANGE. 
+# SELECT THE DIRECTORY WHERE THE FILES WERE DOWNLOADED TO
+# AND HIT 'RUN APP' or "RUN ALL" at the top
+setwd('C:/Users/birde/Dropbox/ebird')
+# 
+{#
+#
+#
+#
+#
+#
+###################################
+# Do not touch below
+###################################
+presence<-read.csv('eBird_TX_all.csv')
+presence$county<-tolower(presence$county)
+sub.t<-read.csv('eBird_TX_filters_small.csv')
+sub.t$COUNTY<-tolower(sub.t$COUNTY)
+dfsample<-read.csv('eBird_TX_sample.csv')
+ababase<-read.csv('ababase.csv')
+
 dfsample$county<-tolower(dfsample$county)
-f.dates<-read.csv('C:/Users/birde/Dropbox/ebird/ebird_dates.csv')
+f.dates<-read.csv('ebird_dates.csv')
 map.county <- map_data('county')
 map.county<-subset(map.county,region=='texas')
-all.species<-as.character(sort(unique(presence$Species[presence$year.sum>=100])))
+sub.t<-merge(sub.t, ababase[,c('SpeciesID','species')],by='SpeciesID')
+all.species<-as.character(sort(unique(presence$Species[presence$year.sum>=50])))
 all.counties<-sort(unique(presence$county))
 cdate<-as.character(f.dates$cdate)
 ui<-shinyUI(navbarPage("Texas eBird",
@@ -134,12 +153,13 @@ server<-function(input, output){
     max.p.sum<-input$max.p.sum
     x1<-as.POSIXlt(input$daterange1[1])$yday
     y1<-as.POSIXlt(input$daterange1[2])$yday
-    if(y1<x1){y1<-x1}
     filter1<-f.dates$julian.start<=y1 & f.dates$julian.start>=x1
+    if(x1>y1){filter1<-!(f.dates$julian.start>=y1 & f.dates$julian.start<=x1)}
     presence$county<-tolower(presence$county)
     sub.p<-subset(presence, Species==q.species)
     df.nsample<- merge(sub.p[,c('county'),drop=F],dfsample,by='county',all.x=T)
-    df.numbers<-round(sub.p[,cdate]    * df.nsample[,cdate])
+    df.numbers<-round(as.matrix(sub.p[,cdate]) *(df.nsample[,cdate]))
+    
     sub.p$year.sum<-apply(df.numbers[,filter1], 1, sum)
     sub.p$mean.pre<-apply(sub.p[,as.character(f.dates$cdate[filter1])], 1, mean)
     sub.p$county<-tolower(sub.p$county)
@@ -158,13 +178,15 @@ server<-function(input, output){
     
     b<-ggplot() + geom_polygon(data = map.county1, aes(x=long, y = lat, group =group,fill=mean.pre),color='black') + coord_fixed(1.3) +ggtitle('Presence on eBird')+ scale_fill_continuous(name = "Mean")
     
-    #allspecies<-data.frame(species=sort(unique(sub.t$taxon)))
-    sub.s<-sub.t[sub.t$taxon==q.species,]
+    #allspecies<-data.frame(species=sort(unique(sub.t$species)))
+    sub.s<-sub.t[sub.t$species==q.species,]
     sub.s$COUNTY<-tolower(sub.s$COUNTY)
     
     
     {df.onfilter<-data.frame(county=tolower(unique(sub.s$COUNTY)), onfilter=as.numeric(sapply(unique(sub.s$COUNTY), function(x){
-      sub.df<-subset(sub.s, COUNTY==x)
+      #x<-'comal'
+      sub.df<-sub.s[as.character(sub.s$COUNTY)==as.character(x),]
+      if(nrow(sub.df)==1){sub.df<-rbind(sub.df,sub.df);sub.df$dayOfYear[2]<-365}
       fsum<-sum(sub.df$count[sub.df$dayOfYear<=y1 & sub.df$dayOfYear>=x1])
       if(is.na(fsum)| fsum==0){fsum<-F}else {fsum<-T}
       fsum
@@ -194,11 +216,11 @@ server<-function(input, output){
     maxcheck<-input$maxcheck
     #if(x1>y1){y1<-as.POSIXlt(input$daterange3[1])$yday; x1<-as.POSIXlt(input$daterange3[2])$yday}
     filter1<-f.dates$julian.start<=y1 & f.dates$julian.start>=x1
+    if(x1>y1){filter1<-!(f.dates$julian.start>=y1 & f.dates$julian.start<=x1)}
     presence$county<-tolower(presence$county)
     sub.p<-presence[apply(presence[,cdate[filter1]],1,sum)>0,]
     df.nsample<- merge(sub.p[,c('county'),drop=F],dfsample,by='county',all.x=T)
-    df.numbers<-round(sub.p[,cdate]    * df.nsample[,cdate])
-    
+    df.numbers<-round(as.matrix(sub.p[,cdate]) *(df.nsample[,cdate]))
     s.df<-data.frame(speciesD=tapply(sub.p$Species, sub.p$county,length), county=tapply(sub.p$county, sub.p$county,function(x)as.character(x[1])))
     
     p.df<-data.frame(totalCheck=apply(dfsample[,cdate][,filter1],1,sum), county=dfsample$county)
@@ -206,8 +228,8 @@ server<-function(input, output){
     sp.df<-merge(s.df,p.df,by='county')
     #sub.s<-sub.t
     sub.t$COUNTY<-tolower(sub.t$COUNTY)
-    
-    dd<-tapply(sub.t$dayOfYear,list(sub.t$COUNTY,sub.t$taxon) ,function(x){length(x[x<=y1 & x>=x1])>0})
+    if(x1>y1){dd<-tapply(sub.t$dayOfYear,list(sub.t$COUNTY,sub.t$species) ,function(x){length(x[x>=y1 & x<=x1])>0})}else{
+    dd<-tapply(sub.t$dayOfYear,list(sub.t$COUNTY,sub.t$species) ,function(x){length(x[x<=y1 & x>=x1])>0})}
     df.onfilter<-data.frame(county=row.names(dd),onfilter=apply(dd,1,sum,na.rm=T))
     # df.onfilter<-data.frame(county=tolower(unique(sub.s$COUNTY)), onfilter=as.numeric(sapply(unique(sub.s$COUNTY), function(x){
     #   #x<-'comal'
@@ -274,7 +296,7 @@ server<-function(input, output){
     )
     d<-do.call(rbind, poly.list)
     if(length(d)==0){d<-data.frame(x=c(0,0,0,0),y=c(0,0,0,0),t=as.character(1))}
-    ggplot(new.pmodel, aes(x=realdate,y=y2)) + geom_point()+geom_polygon(data=d, mapping=aes(x=x, y=y,group=t,fill='red'),alpha=.2)+
+    ggplot(new.pmodel, aes(x=realdate,y=y2)) + geom_point()+geom_line()+geom_polygon(data=d, mapping=aes(x=x, y=y,group=t,fill='red'),alpha=.2)+
       ggtitle(q.species)+scale_x_continuous(name='Date',breaks=1:48,labels=f.dates$name) +
       theme_bw()+theme(axis.title.x=element_text(size=17),axis.title.y=element_text(size=17),title=element_text(size=17),axis.text.x = element_text(angle = 60,vjust=.5,size=12))+
       ylab('Smoothed Presence')+ guides(fill=FALSE) + theme(panel.border = element_blank(), panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))
@@ -284,26 +306,26 @@ server<-function(input, output){
     
   })
   output$table <- renderDataTable({
-    # q.species<-'American Kestrel'
+    # q.species<-'Blue-winged Warbler'
     # county<-'Comal'
     # smoother<-0.6
     # p.limit<-0.001
     #cdate<-paste0('X',rep(1:12,1,each=4),'.',1:4)
-    # x1<-100
-    # y1<-190
+    # x1<-0
+    # y1<-365
     county<-input$county3
     x1<-as.POSIXlt(input$daterange4[1])$yday
     y1<-as.POSIXlt(input$daterange4[2])$yday
-    if(y1<x1){y1<-x1}
     filter1<-f.dates$julian.start<=y1 & f.dates$julian.start>=x1
+    if(x1>y1){filter1<-!(f.dates$julian.start>=y1 & f.dates$julian.start<=x1)}
     presence$county<-tolower(presence$county)
     sub.c<-presence[presence$county==tolower(county),]
     df.nsample<-c(t(dfsample[dfsample$county==tolower(county),colnames(dfsample)!='county']))
   
     listsize1<-sum(df.nsample[filter1])
     output$listsize<-renderText({paste0('Total Checklists: ',ifelse(is.na(listsize1),0,listsize1))})
-    df.numbers<-round(sub.c[,cdate]    * df.nsample)
-    sub.c$year.sum<-apply(df.numbers[,filter1], 1, sum)
+    df.numbers<-round(t(t(as.matrix(sub.c[,cdate])) *(df.nsample)))
+    sub.c$year.sum<-round(apply(df.numbers[,filter1], 1, sum))
     
     sub.c$mean.pre<-apply(sub.c[,as.character(f.dates$cdate[filter1])], 1, mean)
     sub.c$max.pre<-apply(sub.c[,as.character(f.dates$cdate[filter1])], 1, max)
@@ -311,7 +333,7 @@ server<-function(input, output){
     sub.ct<-subset(sub.t, tolower(COUNTY)==tolower(county))
     sub.cf<-data.frame(species=unique(c(as.character(sub.c$Species), as.character(sub.ct$taxon))))
     sub.cf<-merge(sub.cf, sub.c[,c('Species','year.sum', 'max.pre','mean.pre')],by.x='species',by.y='Species',all.x=T)
-    sub.cf$filter<-sub.cf$species%in%unique(sub.ct$taxon)
+    sub.cf$filter<-sub.cf$species%in%unique(sub.ct$species)
     for(i in 2:ncol(sub.cf[,])){sub.cf[is.na(sub.cf[,i]),i]<-0}
     sub.cf<-sub.cf[order(-sub.cf$filter,sub.cf$year.sum),]
     sub.cf$filter<-ifelse(sub.cf$filter==1,'yes','no')
@@ -322,3 +344,4 @@ server<-function(input, output){
 }
 
 shinyApp(ui=ui,server=server)
+}
