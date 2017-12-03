@@ -126,7 +126,8 @@ tabPanel('Birds v Filter',fluidPage(
                             max    = paste0(as.POSIXlt(Sys.Date())$year+1900,"-12-31"),
                             format = "mm/dd",
                             separator = " to ")
-      )
+      ),
+      column(4,textOutput('text1'))
     )
   ),
   wellPanel(
@@ -340,7 +341,7 @@ server<-function(input, output){
     colnames(sub.cf)<-c('Species','Total Sightings','Max Presence','Average Presence','On Filter')
     return(sub.cf)
   })
-
+  output$text1<-renderText('This page describes how conservative a filter is. Red means the filter has less birds on it than are seen on ebird. Blue means more birds are on the filter than are seen on ebird ')
 }
 
 shinyApp(ui=ui,server=server)
